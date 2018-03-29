@@ -1,0 +1,116 @@
+// Include file for Canny edge detector
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+// Image size
+#define IMAGE_WIDTH 186
+#define IMAGE_HEIGHT 182
+
+// Gaussian kernel
+#define GAUSSIAN_KERNEL_SIZE 5
+const unsigned char gaussian_kernel[GAUSSIAN_KERNEL_SIZE * GAUSSIAN_KERNEL_SIZE] = { 1,  4,  6,  4, 1,
+										     4, 16, 24, 16, 4,
+										     6, 24, 36, 24, 6,
+										     4, 16, 24, 16, 4,
+										     1,  4,  6,  4, 1 };
+#define GAUSSIAN_KERNEL_FACTOR 0.0039
+
+// Sobel kernel
+#define SOBEL_KERNEL_SIZE 3
+const unsigned char sobel_kernel_x[SOBEL_KERNEL_SIZE * SOBEL_KERNEL_SIZE] = { -1, 0, 1,
+									      -2, 0, 2,
+									      -1, 0, 1 };
+const unsigned char sobel_kernel_y[SOBEL_KERNEL_SIZE * SOBEL_KERNEL_SIZE] = {  1,  2,  1,
+									       0,  0,  0,
+									      -1, -2, -1 };
+
+// Read image file produced by Imagemagick
+void read_image_file(char *file_name, unsigned char *result) {
+  FILE *in;
+  int r, x, y, v;
+
+  in = fopen(file_name, "r");
+  
+  r = fscanf(in, "%i,%i,%i\n", &x, &y, &v);
+  while (!(r == EOF)) {
+    *(result + y * IMAGE_WIDTH * sizeof(unsigned char) + x) = v;
+    r = fscanf(in, "%i,%i,%i\n", &x, &y, &v);
+  }
+  
+  fclose(in);
+
+  /*  for (y = 0; y < IMAGE_HEIGHT; y++) {
+    for (x = 0; x < IMAGE_WIDTH; x++) {
+      printf("%i,%i,%i\n", x, y, (int) *(result + y * IMAGE_WIDTH * sizeof(unsigned char) + x));
+    }
+    }*/
+}
+
+// Write image file consumable by Imagemagick
+void write_image_file(char *file_name, unsigned char *image) {
+  FILE *out;
+  int x, y, v;
+
+  out = fopen(file_name, "w+");
+
+  fprintf(out, "# ImageMagick pixel enumeration: 186,182,255,gray\n");
+  for (y = 0; y < IMAGE_HEIGHT; y++) {
+    for (x = 0; x < IMAGE_WIDTH; x++) {
+      v = *(image + y * IMAGE_WIDTH * sizeof(unsigned char) + x);
+      fprintf(out, "%i,%i: (%i,%i,%i)  #%02x%02x%02x  gray(%i)\n", x, y, v, v, v, v, v, v, v);
+    }
+  }
+
+  fclose(out);
+}
+
+// Convolve image with kernel
+void convolve_image(unsigned char *image, unsigned char* kernel, unsigned char kernel_size) {
+  int ix, iy, kx, ky, sum, tmp;
+  unsigned char *tmp_img;
+  double v;
+  
+  tmp_img = (unsigned char *)malloc(IMAGE_WIDTH * IMAGE_HEIGHT * sizeof(unsigned char));
+  memcpy(tmp_img, image, IMAGE_WIDTH * IMAGE_HEIGHT * sizeof(unsigned char));
+  
+  tmp = (kernel_size - 1) / 2;
+
+  for (iy = tmp; iy < IMAGE_HEIGHT - tmp; iy++) {
+    for (ix = tmp; ix < IMAGE_WIDTH - tmp; ix++) {
+      sum = 0;
+      for (ky = -tmp; ky <= tmp; ky++) {
+	for (kx = -tmp; kx <= tmp; kx++) {
+	  sum += (*(kernel + (ky + tmp) * GAUSSIAN_KERNEL_SIZE * sizeof(unsigned char) + kx + tmp) * (*(tmp_img + (iy + ky) * IMAGE_WIDTH * sizeof(unsigned char) + ix + kx)));
+	}
+      }
+      *(image + iy * IMAGE_WIDTH * sizeof(unsigned char) + ix) = (unsigned char)(GAUSSIAN_KERNEL_FACTOR * sum);
+    }
+  }
+}
+
+void calculate_gradient(unsigned char *image) {
+  int x, y;
+  double d;
+  unsigned char *gradient_h, *gradient_v;
+
+  gradient_h = (unsigned char *)malloc(IMAGE_WIDTH * IMAGE_HEIGHT * sizeof(unsigned char));
+  memcpy(gradient_h, image, IMAGE_WIDTH * IMAGE_HEIGHT * sizeof(unsigned char));
+  convolve_image(gradient_h, sobel_kernel_x, SOBEL_KERNEL_SIZE);
+
+  gradient_v = (unsigned char *)malloc(IMAGE_WIDTH * IMAGE_HEIGHT * sizeof(unsigned char));
+  memcpy(gradient_v, image, IMAGE_WIDTH * IMAGE_HEIGHT * sizeof(unsigned char));
+  convolve_image(gradient_h, sobel_kernel_y, SOBEL_KERNEL_SIZE);
+
+  for (y = 0; y < IMAGE_HEIGHT; y++) {
+    for (x = 0; x < IMAGE_WIDTH; x++) {
+      d = sqrt(pow((double)(*(gradient_h + y * IMAGE_WIDTH * sizeof(unsigned char) + x)), 2) +
+	       pow((double)(*(gradient_v + y * IMAGE_WIDTH * sizeof(unsigned char) + x)), 2));
+     *(image + y * IMAGE_WIDTH * sizeof(unsigned char)  + x) = (unsigned char)(int)d;
+    }
+  }
+  
+  
+}
